@@ -1,0 +1,11 @@
+name = Facebook Feed
+description = Provides a block with a Facebook feed
+
+core = 7.x
+package = Custom
+
+; Add a style sheet for all media
+stylesheets[all][] = main.css
+
+; Link to configuration page, set in acebook_feed.module: facebook_feed_menu()
+configure = admin/config/content/facebook_feed

@@ -1,0 +1,240 @@
+<?php
+
+  /**
+   * @file
+   * Creates block and configuration to a Facebook API.
+   * All rights reserved for Facebook (2014), for the content.
+   *
+   * @author Mads Jensen <madsjensen5@gmail.com>
+   */
+  /**
+   * Implements hook_help().
+   *
+   * You can add documentation and help here (in admin/help#facebook_feed). This
+   * documentation can help the users use and extend you module.
+   *
+   * @url: https://api.drupal.org/api/drupal/modules!help!help.api.php/function/hook_help/7
+   */
+
+  function facebook_feed_help($path, $arg) {
+    switch ($path) {
+      case 'admin/setting/facebook_feed':
+        return t('This module displays a block which shows a list recent ESPN sport news..');
+      case 'admin/help#facebook_feed';
+        $output = '<h2>' . t('About') . '</h2>';
+        $output .= '<p>' . t('Displays recent sport news from ESPN.') . '</p>';
+        $output .= '<p>' . t('The news is fetched with ESPNs open REST API, all rights reserved to ESPN (2014).') . '</p>';
+        return $output;
+    }
+  }
+
+  /**
+   * Implements hook_block_info().
+   * 
+   * Declares a block to provide to Drupal. This can also specify block
+   * configuration settings, like here where the cache is determined be the
+   * user role.
+   *
+   * @url: https://api.drupal.org/api/drupal/modules!block!block.api.php/function/hook_block_info/7
+   */
+  function facebook_feed_block_info() {
+    $blocks['facebook_feed'] = array(
+      'info' => t('Facebook Feed'),
+      'cache' => DRUPAL_CACHE_PER_ROLE,
+    );
+    return $blocks;
+  }
+
+  /**
+   * Implements hook_menu().
+   *
+   * Defines paths to provide page callbacks and menu items for the site.
+   * Here it defines a configuration page with callback to a form, we'll
+   * create later on.
+   *
+   * @url: https://api.drupal.org/api/drupal/modules!system!system.api.php/function/hook_menu/7
+   */
+  function facebook_feed_menu() {
+    $items = array();
+    // Module configuration page.
+    $items['admin/config/content/facebook_feed'] = array(
+      'title' => 'Facebook Feed',
+      'description' => 'Configuration for Facebook Feed module',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('facebook_feed_form'),
+      'access arguments' => array('administer site configuration'),
+      'type' => MENU_NORMAL_ITEM,
+    );
+    return $items;
+  }
+
+  /**
+   * Custom API content callback.
+   *
+   * This callback is a custom callback to get ESPN news data.
+   * Here we request the data, preprocesses it and creates a list of news. The 
+   * array '$items' contains all the news, we'll display it as a unordered list
+   * later on.
+   *
+   * drupal_http_request: https://api.drupal.org/api/drupal/includes!common.inc/function/drupal_http_request/7
+   * drupal_json_decode: https://api.drupal.org/api/drupal/includes!common.inc/function/drupal_json_decode/7
+   */
+  function facebook_feed_api_content() {
+      require_once 'libs/facebook.php';
+
+      try {
+        $facebook = new Facebook(array(
+          'appId' => variable_get('facebook_feed_app_id'), 
+          'secret' => variable_get('facebook_feed_app_secret')
+        ));
+
+        $result_page = $facebook->api('/'. variable_get('facebook_feed_page'), 'GET');
+        $result_feed = $facebook->api('/'. variable_get('facebook_feed_page') . '/feed', 'GET');
+        $result_picture = $facebook->api('/'. variable_get('facebook_feed_page') .'?fields=picture', 'GET');
+
+        // Create li item with content.
+
+       
+        for($i = 0; $i < variable_get('facebook_feed_limit'); $i++) { 
+          $date = strtotime($result_feed['data'][$i]['created_time']);
+          $items[] = array(
+            'data' => '
+                        <div class="profile-picture">
+                          <img src="' . $result_picture['picture']['data']['url'] . '">
+                        </div>
+
+                        <div class="message">' .
+                        $result_feed['data'][$i]['message'] . '<br>' . 
+                        '<a href="' . $result_page['link'] . '"><img src="' . $result_feed['data'][$i]['picture'] . '"></a><br>' .
+                        date('d. F k\l. H:i', $date) . 
+                        '</div>
+                        <hr>'
+            ,
+          );
+        }
+      
+      // If no content is found, return fail.
+      if (empty($items)) {
+        $items[] = array(
+          'data' => 'No news available',
+        );
+      }
+      return $items;
+    } catch(Exception $e) {
+        echo 'Caught exception: ' .  $e->getMessage();
+    }
+  }
+
+  /**
+   * Implements hook_block_view().
+   *
+   * Creates content for our block. It sets the title for the block, and returns
+   * our news (from our custom callback) as a ul-list, with the id 'espn-news'.
+   *
+   * @url: https://api.drupal.org/api/drupal/modules!block!block.api.php/function/hook_block_view/7
+   */
+  function facebook_feed_block_view($delta = '') {
+    $block = array();
+    switch ($delta) {
+      case 'facebook_feed':
+        // List attributes.
+        $attributes = array(
+          'id' => 'facebook_feed',
+        );
+        // Set block title.
+        $block['subject'] = t('Facebook Feed');
+        // Get content from API.
+        $items = facebook_feed_api_content();
+        // Print list.
+        $block['content'] = theme('item_list', array(
+          'items' =>  $items,
+          'type' => 'ul',
+          'attributes' => array(
+            'id' => 'facebookfeed',
+          ),
+        ));
+        // $block['content'] = 'Hello World';
+        return $block;
+    }
+  } 
+
+  /**
+   * Implements hook_form().
+   *
+   * Creates a configuration form. See the API reference for info on different
+   * form inputs. Here we only have two textfields.
+   *
+   * From API Reference: https://api.drupal.org/api/drupal/developer!topics!forms_api_reference.html/7
+   *
+   * @url: https://api.drupal.org/api/drupal/modules!node!node.api.php/function/hook_form/7
+   */
+  function facebook_feed_form($form, &$form_state) {
+    // Fieldset.
+    $form['facebook_api'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Facebook Feed'),
+      '#weight' => 0,
+      '#collapsible' => TRUE,
+      '#collapsed' => FALSE,
+    );
+    // Textfield for API key.
+    $form['facebook_api']['facebook_feed_app_id'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Facebook App ID'),
+      '#default_value' => variable_get('facebook_feed_app_id'),
+      '#size' => 40,
+      '#maxlength' => 24,
+      '#description' => t('API from Facebook (http://developers.facebook.com).'),
+      '#required' => TRUE,
+    );
+    $form['facebook_api']['facebook_feed_app_secret'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Facebook App Secret'),
+      '#default_value' => variable_get('facebook_feed_app_secret'),
+      '#size' => 40,
+      '#maxlength' => 40,
+      '#description' => t('API from Facebook (http://developers.facebook.com).'),
+      '#required' => TRUE,
+    );
+    $form['facebook_api']['facebook_feed_page'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Facebook Page'),
+      '#default_value' => variable_get('facebook_feed_page'),
+      '#size' => 40,
+      '#maxlength' => 24,
+      '#description' => t('Which page you want to display'),
+      '#required' => TRUE,
+    );
+    // Textfield for limit.
+    $form['facebook_api']['facebook_feed_limit'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Limit'),
+      '#default_value' => variable_get('facebook_feed_limit', 10),
+      '#size' => 5,
+      '#maxlength' => 2,
+      '#description' => t('Limit number of posts shown.'),
+      '#required' => TRUE,
+    );
+    return system_settings_form($form);
+  }
+
+  /**
+   * Implements hook_validate().
+   *
+   * Validation for configuration form. Since we need a number in the
+   * limit-textfield, we check that the inout is correct.
+   *
+   * @url: https://api.drupal.org/api/drupal/modules!node!node.api.php/function/hook_validate/7
+   */
+  function facebook_feed_form_validate($form, &$form_state) {
+    // Get current value from input.
+    $facebook_feed_limit = $form_state['values']['facebook_feed_limit'];
+    // Check that input is a number.
+    if (!is_numeric($facebook_feed_limit)) {
+      form_set_error('facebook_feed_limit', t('Limit must be a number.'));
+    }
+    // Check that input is not negative.
+    elseif ($facebook_feed_limit <= 0) {
+      form_set_error('facebook_feed_limit', t('Limit must be between 1 and 99.'));
+    }
+  }

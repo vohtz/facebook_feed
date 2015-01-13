@@ -1,0 +1,24 @@
+body {
+  font-size: 0.875rem;
+}
+
+#facebookfeed {
+  position: relative;
+  max-width: 350px;
+  max-height: 500px;
+  padding: 10px;
+  overflow: auto;
+  border: 2px solid black; 
+}
+
+#facebookfeed li {
+}
+
+.message {
+  margin-left: 60px; 
+}
+
+.profile-picture {
+  position: absolute;
+  width: 50px; 
+}
